@@ -33,7 +33,7 @@ func main() {
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(storage)
-	ordersHandler := handlers.NewOrdersHandler(storage)
+	ordersHandler := handlers.NewOrdersHandler(storage, accrualSvc)
 	balanceHandler := handlers.NewBalanceHandler(storage)
 
 	// Router
@@ -58,7 +58,7 @@ func main() {
 
 	// Фоновый процесс для обновления статусов заказов
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			updateOrderStatuses(storage, accrualSvc)

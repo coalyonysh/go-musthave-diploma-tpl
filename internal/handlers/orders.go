@@ -6,17 +6,19 @@ import (
 	"strconv"
 	"strings"
 
+	"coalyonysh/go-musthave-diploma-tpl/internal/services"
 	"coalyonysh/go-musthave-diploma-tpl/internal/storage"
 
 	"github.com/gin-gonic/gin"
 )
 
 type OrdersHandler struct {
-	storage storage.Storage
+	storage    storage.Storage
+	accrualSvc *services.AccrualService
 }
 
-func NewOrdersHandler(storage storage.Storage) *OrdersHandler {
-	return &OrdersHandler{storage: storage}
+func NewOrdersHandler(storage storage.Storage, accrualSvc *services.AccrualService) *OrdersHandler {
+	return &OrdersHandler{storage: storage, accrualSvc: accrualSvc}
 }
 
 func (h *OrdersHandler) UploadOrder(c *gin.Context) {
@@ -67,6 +69,9 @@ func (h *OrdersHandler) UploadOrder(c *gin.Context) {
 		return
 	}
 
+	// Обновляем статус сразу
+	h.updateOrderStatuses()
+
 	c.JSON(http.StatusAccepted, gin.H{"message": "order uploaded successfully"})
 }
 
@@ -89,6 +94,61 @@ func (h *OrdersHandler) GetOrders(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, orders)
+}
+
+func (h *OrdersHandler) updateOrderStatuses() {
+	// Получить заказы в NEW и PROCESSING
+	orders, err := h.storage.GetOrdersByStatuses([]string{"NEW", "PROCESSING"})
+	if err != nil {
+		// log.Printf("Failed to get orders: %v", err)
+		return
+	}
+
+	for _, order := range orders {
+		accrualResp, err := h.accrualSvc.GetOrderAccrual(order.Number)
+		if err != nil {
+			if err.Error() == "too many requests" {
+				// log.Println("Too many requests to accrual service, skipping...")
+				return
+			}
+			// log.Printf("Failed to get accrual for order %s: %v", order.Number, err)
+			continue
+		}
+
+		if accrualResp == nil {
+			// Заказ не зарегистрирован, оставляем как есть
+			continue
+		}
+
+		// Обновить статус
+		newStatus := accrualResp.Status
+		var accrual *float64
+		if accrualResp.Accrual != nil {
+			accrual = accrualResp.Accrual
+		}
+
+		err = h.storage.UpdateOrderStatus(order.ID, newStatus, accrual)
+		if err != nil {
+			// log.Printf("Failed to update order %s: %v", order.Number, err)
+			continue
+		}
+
+		// Если PROCESSED и есть accrual, начислить баллы пользователю
+		if newStatus == "PROCESSED" && accrual != nil && *accrual > 0 {
+			user, err := h.storage.GetUserByID(order.UserID)
+			if err != nil {
+				// log.Printf("Failed to get user %d: %v", order.UserID, err)
+				continue
+			}
+			if user != nil {
+				newBalance := user.Balance + *accrual
+				err = h.storage.UpdateUserBalance(order.UserID, newBalance, user.Withdrawn)
+				if err != nil {
+					// log.Printf("Failed to update balance for user %d: %v", order.UserID, err)
+				}
+			}
+		}
+	}
 }
 
 func (h *OrdersHandler) isValidLuhn(number string) bool {
