@@ -100,7 +100,6 @@ func (h *OrdersHandler) updateOrderStatuses() {
 	// Получить заказы в NEW и PROCESSING
 	orders, err := h.storage.GetOrdersByStatuses([]string{"NEW", "PROCESSING"})
 	if err != nil {
-		// log.Printf("Failed to get orders: %v", err)
 		return
 	}
 
@@ -108,10 +107,8 @@ func (h *OrdersHandler) updateOrderStatuses() {
 		accrualResp, err := h.accrualSvc.GetOrderAccrual(order.Number)
 		if err != nil {
 			if err.Error() == "too many requests" {
-				// log.Println("Too many requests to accrual service, skipping...")
 				return
 			}
-			// log.Printf("Failed to get accrual for order %s: %v", order.Number, err)
 			continue
 		}
 
@@ -129,7 +126,6 @@ func (h *OrdersHandler) updateOrderStatuses() {
 
 		err = h.storage.UpdateOrderStatus(order.ID, newStatus, accrual)
 		if err != nil {
-			// log.Printf("Failed to update order %s: %v", order.Number, err)
 			continue
 		}
 
@@ -137,14 +133,13 @@ func (h *OrdersHandler) updateOrderStatuses() {
 		if newStatus == "PROCESSED" && accrual != nil && *accrual > 0 {
 			user, err := h.storage.GetUserByID(order.UserID)
 			if err != nil {
-				// log.Printf("Failed to get user %d: %v", order.UserID, err)
 				continue
 			}
 			if user != nil {
 				newBalance := user.Balance + *accrual
 				err = h.storage.UpdateUserBalance(order.UserID, newBalance, user.Withdrawn)
 				if err != nil {
-					// log.Printf("Failed to update balance for user %d: %v", order.UserID, err)
+					// ignore
 				}
 			}
 		}
