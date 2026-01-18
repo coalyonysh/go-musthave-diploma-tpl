@@ -137,10 +137,7 @@ func (h *OrdersHandler) updateOrderStatuses() {
 			}
 			if user != nil {
 				newBalance := user.Balance + *accrual
-				err = h.storage.UpdateUserBalance(order.UserID, newBalance, user.Withdrawn)
-				if err != nil {
-					// ignore
-				}
+				h.storage.UpdateUserBalance(order.UserID, newBalance, user.Withdrawn)
 			}
 		}
 	}
